@@ -135,6 +135,80 @@ class LoadAnnotations(MMCV_LoadAnnotations):
 
 
 @TRANSFORMS.register_module()
+class LoadDisparityFromFile(BaseTransform):
+    """Load disparity (or depth-like) maps from file.
+
+    Required Keys:
+
+    - ``filename_key`` (defaults to ``'img_path2'``): Path to disparity map.
+
+    Added Keys:
+
+    - ``disp`` (np.ndarray): Loaded disparity map.
+    - ``disp_path`` (str): The path to the disparity map file.
+    - ``disp_shape`` (Tuple[int, int]): Height and width of the disparity map.
+
+    Args:
+        to_float32 (bool): Whether to convert the loaded map to float32.
+            Defaults to True.
+        color_type (str): Color type passed to :func:`mmcv.imfrombytes`.
+            Defaults to 'unchanged'.
+        imdecode_backend (str): Backend for :func:`mmcv.imfrombytes`.
+            Defaults to 'pillow'.
+        filename_key (str): Key in ``results`` that stores the path.
+            Defaults to 'img_path2'.
+        out_key (str): Key used to store the loaded disparity map in
+            ``results``. Defaults to 'disp'.
+        backend_args (dict, optional): File backend arguments. Defaults to
+            None.
+    """
+
+    def __init__(self,
+                 to_float32: bool = True,
+                 color_type: str = 'unchanged',
+                 imdecode_backend: str = 'pillow',
+                 filename_key: str = 'img_path2',
+                 out_key: str = 'disp',
+                 backend_args: Optional[dict] = None) -> None:
+        self.to_float32 = to_float32
+        self.color_type = color_type
+        self.imdecode_backend = imdecode_backend
+        self.filename_key = filename_key
+        self.out_key = out_key
+        self.backend_args = backend_args.copy() if backend_args else None
+
+    def transform(self, results: Dict) -> Dict:
+        filename = results.get(self.filename_key, None)
+        if filename is None:
+            raise KeyError(f'{self.filename_key} is not found in results')
+
+        img_bytes = fileio.get(filename, backend_args=self.backend_args)
+        disp = mmcv.imfrombytes(
+            img_bytes, flag=self.color_type, backend=self.imdecode_backend)
+
+        if self.to_float32:
+            disp = disp.astype(np.float32)
+
+        results[self.out_key] = disp
+        results[f'{self.out_key}_path'] = filename
+        results[f'{self.out_key}_shape'] = disp.shape[:2]
+        img_fields = results.setdefault('img_fields', ['img'])
+        if self.out_key not in img_fields:
+            img_fields.append(self.out_key)
+        return results
+
+    def __repr__(self) -> str:
+        repr_str = (f'{self.__class__.__name__}('
+                    f"to_float32={self.to_float32}, "
+                    f"color_type='{self.color_type}', "
+                    f"imdecode_backend='{self.imdecode_backend}', "
+                    f"filename_key='{self.filename_key}', "
+                    f"out_key='{self.out_key}', "
+                    f'backend_args={self.backend_args})')
+        return repr_str
+
+
+@TRANSFORMS.register_module()
 class LoadImageFromNDArray(LoadImageFromFile):
     """Load an image from ``results['img']``.
 

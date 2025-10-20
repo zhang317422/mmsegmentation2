@@ -6,7 +6,7 @@ import torch
 from mmengine.model import BaseDataPreprocessor
 
 from mmseg.registry import MODELS
-from mmseg.utils import stack_batch
+from mmseg.utils import SampleList, stack_batch
 
 
 @MODELS.register_module()
@@ -90,7 +90,10 @@ class SegDataPreProcessor(BaseDataPreprocessor):
             self._enable_normalize = False
 
         # TODO: support batch augmentations.
-        self.batch_augments = batch_augments
+        if batch_augments is not None:
+            raise NotImplementedError(
+                'Batch augmentations are not supported for RGB-D inputs yet.')
+        self.batch_augments = None
 
         # Support different padding methods in testing
         self.test_cfg = test_cfg
@@ -149,3 +152,158 @@ class SegDataPreProcessor(BaseDataPreprocessor):
                 inputs = torch.stack(inputs, dim=0)
 
         return dict(inputs=inputs, data_samples=data_samples)
+
+
+@MODELS.register_module()
+class RGBDSegDataPreProcessor(BaseDataPreprocessor):
+    """Pre-processor for RGB-D semantic segmentation tasks.
+
+    This data pre-processor extends :class:`SegDataPreProcessor` to handle
+    paired RGB images and disparity/depth maps. It normalizes and pads each
+    modality independently before stacking them into batched tensors while
+    keeping the accompanying :class:`SegDataSample` instances in sync.
+
+    Args:
+        rgb_mean (Sequence[Number], optional): Pixel mean of the RGB modality.
+            Defaults to None.
+        rgb_std (Sequence[Number], optional): Pixel standard deviation of the
+            RGB modality. Defaults to None.
+        disp_mean (Sequence[Number], optional): Pixel mean of the disparity
+            modality. Defaults to None.
+        disp_std (Sequence[Number], optional): Pixel standard deviation of the
+            disparity modality. Defaults to None.
+        size (tuple, optional): Fixed padding size. Defaults to None.
+        size_divisor (int, optional): The divisor of padded size. Defaults to
+            None.
+        rgb_pad_val (Number): Padding value for RGB images. Defaults to 0.
+        disp_pad_val (Number): Padding value for disparity images. Defaults to
+            0.
+        seg_pad_val (Number): Padding value for segmentation maps. Defaults to
+            255.
+        bgr_to_rgb (bool): Whether to convert RGB images from BGR to RGB.
+            Defaults to False.
+        batch_augments (list[dict], optional): Batch-level augmentations.
+            Defaults to None.
+        test_cfg (dict, optional): Padding config used during testing. Defaults
+            to None.
+    """
+
+    def __init__(
+        self,
+        rgb_mean: Sequence[Number] = None,
+        rgb_std: Sequence[Number] = None,
+        disp_mean: Sequence[Number] = None,
+        disp_std: Sequence[Number] = None,
+        size: Optional[tuple] = None,
+        size_divisor: Optional[int] = None,
+        rgb_pad_val: Number = 0,
+        disp_pad_val: Number = 0,
+        seg_pad_val: Number = 255,
+        bgr_to_rgb: bool = False,
+        batch_augments: Optional[List[dict]] = None,
+        test_cfg: dict = None,
+    ) -> None:
+        super().__init__()
+        self.size = size
+        self.size_divisor = size_divisor
+        self.rgb_pad_val = rgb_pad_val
+        self.disp_pad_val = disp_pad_val
+        self.seg_pad_val = seg_pad_val
+
+        self.rgb_channel_conversion = bgr_to_rgb
+
+        if rgb_mean is not None:
+            assert rgb_std is not None, (
+                'To enable normalization for RGB inputs, please provide both '
+                '`rgb_mean` and `rgb_std`.')
+            self._enable_rgb_normalize = True
+            self.register_buffer('rgb_mean',
+                                 torch.tensor(rgb_mean).view(-1, 1, 1), False)
+            self.register_buffer('rgb_std',
+                                 torch.tensor(rgb_std).view(-1, 1, 1), False)
+        else:
+            self._enable_rgb_normalize = False
+
+        if disp_mean is not None:
+            assert disp_std is not None, (
+                'To enable normalization for disparity inputs, please provide '
+                'both `disp_mean` and `disp_std`.')
+            self._enable_disp_normalize = True
+            self.register_buffer(
+                'disp_mean', torch.tensor(disp_mean).view(-1, 1, 1), False)
+            self.register_buffer(
+                'disp_std', torch.tensor(disp_std).view(-1, 1, 1), False)
+        else:
+            self._enable_disp_normalize = False
+
+        self.batch_augments = batch_augments
+        self.test_cfg = test_cfg
+
+    def _stack_inputs(self, inputs: List[torch.Tensor], *, pad_val: Number,
+                      data_samples: Optional[SampleList] = None):
+        if self.size is not None or self.size_divisor is not None:
+            return stack_batch(
+                inputs=inputs,
+                data_samples=data_samples,
+                size=self.size,
+                size_divisor=self.size_divisor,
+                pad_val=pad_val,
+                seg_pad_val=self.seg_pad_val)
+        stacked = torch.stack(inputs, dim=0)
+        return stacked, data_samples
+
+    def forward(self, data: dict, training: bool = False) -> Dict[str, Any]:
+        data = self.cast_data(data)  # type: ignore
+        inputs = data['inputs']
+        assert isinstance(inputs, dict) and 'rgb' in inputs and 'disp' in inputs, \
+            'RGBDSegDataPreProcessor expects dict inputs with ``rgb`` and ``disp``.'
+
+        rgb_list = inputs['rgb']
+        disp_list = inputs['disp']
+        data_samples = data.get('data_samples', None)
+
+        if self.rgb_channel_conversion and rgb_list[0].size(0) == 3:
+            rgb_list = [_input[[2, 1, 0], ...] for _input in rgb_list]
+
+        rgb_list = [_input.float() for _input in rgb_list]
+        disp_list = [_input.float() for _input in disp_list]
+
+        if self._enable_rgb_normalize:
+            rgb_list = [(_input - self.rgb_mean) / self.rgb_std
+                        for _input in rgb_list]
+        if self._enable_disp_normalize:
+            disp_list = [(_input - self.disp_mean) / self.disp_std
+                         for _input in disp_list]
+
+        if training:
+            assert data_samples is not None, (
+                'During training, `data_samples` must be provided for padding.')
+            rgb_batch, data_samples = self._stack_inputs(
+                rgb_list, pad_val=self.rgb_pad_val, data_samples=data_samples)
+            disp_batch, _ = self._stack_inputs(
+                disp_list, pad_val=self.disp_pad_val, data_samples=None)
+
+        else:
+            if self.test_cfg:
+                rgb_batch, padded_samples = stack_batch(
+                    inputs=rgb_list,
+                    size=self.test_cfg.get('size', None),
+                    size_divisor=self.test_cfg.get('size_divisor', None),
+                    pad_val=self.rgb_pad_val,
+                    seg_pad_val=self.seg_pad_val)
+                disp_batch, _ = stack_batch(
+                    inputs=disp_list,
+                    size=self.test_cfg.get('size', None),
+                    size_divisor=self.test_cfg.get('size_divisor', None),
+                    pad_val=self.disp_pad_val,
+                    seg_pad_val=self.seg_pad_val)
+                if data_samples is not None:
+                    for data_sample, pad_info in zip(data_samples,
+                                                     padded_samples):
+                        data_sample.set_metainfo({**pad_info})
+            else:
+                rgb_batch = torch.stack(rgb_list, dim=0)
+                disp_batch = torch.stack(disp_list, dim=0)
+
+        batched_inputs = dict(rgb=rgb_batch, disp=disp_batch)
+        return dict(inputs=batched_inputs, data_samples=data_samples)

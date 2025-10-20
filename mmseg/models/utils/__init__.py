@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .basic_block import BasicBlock, Bottleneck
+from .cross_modal_residual import CrossModalResidualFusion
 from .embed import PatchEmbed
 from .encoding import Encoding
 from .inverted_residual import InvertedResidual, InvertedResidualV3
@@ -22,6 +23,6 @@ __all__ = [
     'UpConvBlock', 'InvertedResidualV3', 'SELayer', 'PatchEmbed',
     'nchw_to_nlc', 'nlc_to_nchw', 'nchw2nlc2nchw', 'nlc2nchw2nlc', 'Encoding',
     'Upsample', 'resize', 'DAPPM', 'PAPPM', 'BasicBlock', 'Bottleneck',
-    'cross_attn_layer', 'LayerNorm2d', 'MLP',
+    'cross_attn_layer', 'LayerNorm2d', 'MLP', 'CrossModalResidualFusion',
     'get_uncertain_point_coords_with_randomness'
 ]

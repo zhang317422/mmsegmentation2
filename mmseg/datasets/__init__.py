@@ -4,7 +4,7 @@ from .ade import ADE20KDataset
 from .basesegdataset import BaseCDDataset, BaseSegDataset
 from .bdd100k import BDD100KDataset
 from .chase_db1 import ChaseDB1Dataset
-from .cityscapes import CityscapesDataset
+from .cityscapes import CityscapesDataset, CityscapesRGBDDataset
 from .coco_stuff import COCOStuffDataset
 from .dark_zurich import DarkZurichDataset
 from .dataset_wrappers import MultiImageMixDataset
@@ -44,7 +44,7 @@ from .voc import PascalVOCDataset
 # yapf: enable
 __all__ = [
     'BaseSegDataset', 'BioMedical3DRandomCrop', 'BioMedical3DRandomFlip',
-    'CityscapesDataset', 'PascalVOCDataset', 'ADE20KDataset',
+    'CityscapesDataset', 'CityscapesRGBDDataset', 'PascalVOCDataset', 'ADE20KDataset',
     'PascalContextDataset', 'PascalContextDataset59', 'ChaseDB1Dataset',
     'DRIVEDataset', 'HRFDataset', 'STAREDataset', 'DarkZurichDataset',
     'NightDrivingDataset', 'COCOStuffDataset', 'LoveDADataset',

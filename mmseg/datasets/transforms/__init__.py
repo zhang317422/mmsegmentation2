@@ -1,9 +1,10 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from .formatting import PackSegInputs
+from .formatting import PackRGBDInputs, PackSegInputs
 from .loading import (LoadAnnotations, LoadBiomedicalAnnotation,
                       LoadBiomedicalData, LoadBiomedicalImageFromFile,
-                      LoadDepthAnnotation, LoadImageFromNDArray,
-                      LoadMultipleRSImageFromFile, LoadSingleRSImageFromFile)
+                      LoadDepthAnnotation, LoadDisparityFromFile,
+                      LoadImageFromNDArray, LoadMultipleRSImageFromFile,
+                      LoadSingleRSImageFromFile)
 # yapf: disable
 from .transforms import (CLAHE, AdjustGamma, Albu, BioMedical3DPad,
                          BioMedical3DRandomCrop, BioMedical3DRandomFlip,
@@ -20,11 +21,13 @@ __all__ = [
     'LoadAnnotations', 'RandomCrop', 'BioMedical3DRandomCrop', 'SegRescale',
     'PhotoMetricDistortion', 'RandomRotate', 'AdjustGamma', 'CLAHE', 'Rerange',
     'RGB2Gray', 'RandomCutOut', 'RandomMosaic', 'PackSegInputs',
+    'PackRGBDInputs',
     'ResizeToMultiple', 'LoadImageFromNDArray', 'LoadBiomedicalImageFromFile',
     'LoadBiomedicalAnnotation', 'LoadBiomedicalData', 'GenerateEdge',
     'ResizeShortestEdge', 'BioMedicalGaussianNoise', 'BioMedicalGaussianBlur',
     'BioMedical3DRandomFlip', 'BioMedicalRandomGamma', 'BioMedical3DPad',
     'RandomRotFlip', 'Albu', 'LoadSingleRSImageFromFile', 'ConcatCDInput',
-    'LoadMultipleRSImageFromFile', 'LoadDepthAnnotation', 'RandomDepthMix',
+    'LoadMultipleRSImageFromFile', 'LoadDepthAnnotation',
+    'LoadDisparityFromFile', 'RandomDepthMix',
     'RandomFlip', 'Resize'
 ]

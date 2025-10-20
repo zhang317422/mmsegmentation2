@@ -28,3 +28,17 @@ class CityscapesDataset(BaseSegDataset):
                  **kwargs) -> None:
         super().__init__(
             img_suffix=img_suffix, seg_map_suffix=seg_map_suffix, **kwargs)
+
+
+@DATASETS.register_module()
+class CityscapesRGBDDataset(CityscapesDataset):
+    """Cityscapes dataset that pairs RGB images with disparity maps."""
+
+    def __init__(self,
+                 img_suffix='_leftImg8bit.png',
+                 disp_suffix='_disparity.png',
+                 seg_map_suffix='_gtFine_labelTrainIds.png',
+                 **kwargs) -> None:
+        kwargs.setdefault('img_suffix2', disp_suffix)
+        super().__init__(
+            img_suffix=img_suffix, seg_map_suffix=seg_map_suffix, **kwargs)

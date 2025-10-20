@@ -110,3 +110,74 @@ class PackSegInputs(BaseTransform):
         repr_str = self.__class__.__name__
         repr_str += f'(meta_keys={self.meta_keys})'
         return repr_str
+
+
+@TRANSFORMS.register_module()
+class PackRGBDInputs(BaseTransform):
+    """Pack paired RGB and disparity inputs for segmentation models."""
+
+    def __init__(self,
+                 meta_keys=('img_path', 'disp_path', 'seg_map_path',
+                            'ori_shape', 'img_shape', 'pad_shape',
+                            'scale_factor', 'flip', 'flip_direction',
+                            'reduce_zero_label')):
+        self.meta_keys = meta_keys
+
+    def _pack_image(self, array: np.ndarray) -> 'torch.Tensor':  # type: ignore
+        if len(array.shape) < 3:
+            array = np.expand_dims(array, -1)
+        if not array.flags.c_contiguous:
+            array = np.ascontiguousarray(array.transpose(2, 0, 1))
+        else:
+            array = array.transpose(2, 0, 1)
+        return to_tensor(array).contiguous()
+
+    def transform(self, results: dict) -> dict:
+        packed_results = dict(inputs=dict())
+
+        if 'img' in results:
+            packed_results['inputs']['rgb'] = self._pack_image(results['img'])
+
+        if 'disp' in results:
+            disp = results['disp']
+            if len(disp.shape) == 2:
+                disp = disp[..., None]
+            packed_results['inputs']['disp'] = self._pack_image(disp)
+
+        if 'rgb' not in packed_results['inputs'] and \
+                'disp' not in packed_results['inputs']:
+            raise KeyError('Neither RGB image nor disparity map found in '
+                           'results for packing.')
+
+        data_sample = SegDataSample()
+        if 'gt_seg_map' in results:
+            if len(results['gt_seg_map'].shape) == 2:
+                data = to_tensor(results['gt_seg_map'][None,
+                                                       ...].astype(np.int64))
+            else:
+                warnings.warn('Ground truth segmentation map is expected to be '
+                              '2D, please double check the input shape.')
+                data = to_tensor(results['gt_seg_map'].astype(np.int64))
+            data_sample.gt_sem_seg = PixelData(data=data)
+
+        if 'gt_edge_map' in results:
+            gt_edge_data = dict(
+                data=to_tensor(results['gt_edge_map'][None,
+                                                      ...].astype(np.int64)))
+            data_sample.set_data(dict(gt_edge_map=PixelData(**gt_edge_data)))
+
+        if 'gt_depth_map' in results:
+            gt_depth_data = dict(
+                data=to_tensor(results['gt_depth_map'][None, ...]))
+            data_sample.set_data(dict(gt_depth_map=PixelData(**gt_depth_data)))
+
+        img_meta = {}
+        for key in self.meta_keys:
+            if key in results:
+                img_meta[key] = results[key]
+        data_sample.set_metainfo(img_meta)
+        packed_results['data_samples'] = data_sample
+        return packed_results
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(meta_keys={self.meta_keys})'
