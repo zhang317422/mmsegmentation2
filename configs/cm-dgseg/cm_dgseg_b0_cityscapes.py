@@ -11,9 +11,9 @@ _base_ = [
     '../_base_/default_runtime.py',
 ]
 
-crop_size = (1024, 1024)
+crop_size = (512, 1024)
 num_classes = 19
-norm_cfg = dict(type='SyncBN', requires_grad=True)
+norm_cfg = dict(type='BN', requires_grad=True)
 data_preprocessor = dict(
     type='SegDataPreProcessor',
     mean=[123.675, 116.28, 103.53, 0.0],
@@ -28,7 +28,7 @@ model = dict(
     data_preprocessor=data_preprocessor,
     backbone_rgb=dict(
         type='MixVisionTransformer',
-        init_cfg=dict(type='Pretrained', checkpoint='{{PRETRAIN_B0}}'),
+        init_cfg=dict(type='Pretrained', checkpoint='https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'),
         in_channels=3,
         embed_dims=32,
         num_stages=4,
@@ -60,7 +60,7 @@ model = dict(
     decode_head=dict(
         type='CMFSegFormerHead',
         in_channels=[32, 64, 160, 256],
-        disp_in_channels=[16, 32, 80, 128],
+        disp_in_channels=[16, 16, 48, 64],
         in_index=[0, 1, 2, 3],
         channels=256,
         dropout_ratio=0.1,
@@ -68,13 +68,22 @@ model = dict(
         norm_cfg=norm_cfg,
         align_corners=False,
         with_boundary=False,
+        ignore_index=255,
         loss_decode=[
             dict(
                 type='CrossEntropyLoss',
                 use_sigmoid=False,
-                loss_weight=1.0),
-            dict(type='LovaszLoss', mode='multiclass', loss_weight=0.4)
-        ]),
+                loss_weight=1.0,
+                avg_non_ignore=True
+            ),
+            dict(
+                type='LovaszLoss',
+                per_image=False,
+                reduction='none',
+                loss_weight=0.4
+            )
+        ]
+        ),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(768, 768)))
 
@@ -119,10 +128,10 @@ tta_pipeline = [
         ])
 ]
 
-data_root = 'data/cityscapes/'
+data_root = '/home/featurize/data/cityscapes'
 train_dataloader = dict(
-    batch_size=8,
-    num_workers=8,
+    batch_size=4,
+    num_workers=4,
     persistent_workers=True,
     sampler=dict(type='InfiniteSampler', shuffle=True),
     dataset=dict(
@@ -145,7 +154,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'])
 test_evaluator = val_evaluator
 
 optim_wrapper = dict(
-    type='OptimWrapper',
+    type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=6e-5, betas=(0.9, 0.999), weight_decay=0.01),
     paramwise_cfg=dict(
         custom_keys=dict(
