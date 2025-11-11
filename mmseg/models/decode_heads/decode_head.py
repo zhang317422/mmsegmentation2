@@ -6,6 +6,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 from mmengine.model import BaseModule
+from mmengine.structures import BaseDataElement
 from torch import Tensor
 
 from mmseg.registry import MODELS
@@ -343,12 +344,17 @@ class BaseDecodeHead(BaseModule, metaclass=ABCMeta):
 
         Args:
             seg_logits (Tensor): The output from decode head forward function.
-            batch_img_metas (list[dict]): Meta information of each image, e.g.,
-                image size, scaling factor, etc.
+            batch_img_metas (list[dict] | list[BaseDataElement]): Meta
+                information of each image or data samples that contain the
+                corresponding meta information, e.g., image size, scaling
+                factor, etc.
 
         Returns:
             Tensor: Outputs segmentation logits map.
         """
+
+        if isinstance(batch_img_metas[0], BaseDataElement):
+            batch_img_metas = [data_sample.metainfo for data_sample in batch_img_metas]
 
         if isinstance(batch_img_metas[0]['img_shape'], torch.Size):
             # slide inference
